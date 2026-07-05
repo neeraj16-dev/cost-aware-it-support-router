@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from sentence_transformers import SentenceTransformer
 from ml_pipeline.config import MODELS_DIR, ARTIFACTS_DIR
@@ -7,6 +8,7 @@ from backend.app.api.routes import router
 from langchain_google_genai import ChatGoogleGenerativeAI
 from dotenv import load_dotenv
 from backend.app.db.database import init_db
+from backend.app.api import auth_routes
 import os
 import joblib
 import logging
@@ -68,7 +70,15 @@ app = FastAPI(
     version="1.0.0"
 )
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
 app.include_router(router)
+app.include_router(auth_routes.router)
 
 
 

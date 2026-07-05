@@ -40,7 +40,6 @@ def predict_ticket(subject, body, manager):
     valid_queues = list(manager.category_map.values())
 
     prompt = f"""
-
     You are an expert IT Support Dispatcher.
     Classify this ticket into EXACTLY ONE of these queues:
     {valid_queues}
@@ -48,16 +47,26 @@ def predict_ticket(subject, body, manager):
     Ticket Subject: {subject}
     Ticket Body: {body}
     
-    Return ONLY the exact queue name.
-
-"""
-    # llm_start = time.time()
+    Return ONLY the exact queue name from the list provided. Do not include markdown, extra text, or punctuation.
+    """
+    
     response = manager.llm.invoke([HumanMessage(content=prompt)])
 
     if isinstance(response.content, list):
-        assigned_queue = response.content[0]["text"].strip()
+        raw_queue = response.content[0]["text"]
     else:
-        assigned_queue = response.content.strip()
+        raw_queue = response.content
+
+    # --- TEXT SANITIZATION GUARD ---
+    # Strip whitespace, quotes, backticks, and common markdown wrappers
+    assigned_queue = raw_queue.strip().strip('"').strip("'").strip("`").strip()
+    
+    # If Gemini wrapped it in a label like "Queue: Hardware", isolate just the queue name
+    if ":" in assigned_queue:
+        assigned_queue = assigned_queue.split(":")[-1].strip()
+
+    # Fallback to make sure it matches one of your valid queues if Gemini hallucinated a new name
+    matched_queue = next((q for q in valid_queues if q.lower() in assigned_queue.lower()), assigned_queue)
 
     # Check if usage_metadata exists and grab total_tokens directly
     if hasattr(response, 'usage_metadata') and response.usage_metadata:
@@ -72,8 +81,9 @@ def predict_ticket(subject, body, manager):
     
     return {
         "routing": {
-            "engine": "LLM Fallback (Gemini via LangChain)",
-            "queue": assigned_queue,
+            # Shortened to ensure it fits strict VARCHAR database constraints
+            "engine": "LLM Fallback", 
+            "queue": matched_queue,
             "confidence": round(confidence, 4)
         },
         "metrics": {

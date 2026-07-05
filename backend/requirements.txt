@@ -26,3 +26,8 @@ matplotlib
 langchain
 langchain-google-genai
 python-dotenv
+
+#Security & Authentication
+bcrypt
+PyJWT
+python-multipart

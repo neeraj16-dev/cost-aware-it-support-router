@@ -3,10 +3,11 @@ from sqlmodel import Session, select
 
 
 from backend.app.schemas import TicketRequest, RoutingResponse
-from backend.app.dependencies import get_model_manager
+from backend.app.dependencies import get_model_manager, get_current_user
 from backend.app.services.predictor import predict_ticket
 from backend.app.db.database import get_session
-from backend.app.db.models import TicketLog
+from backend.app.db.models import TicketLog, User
+import traceback
 
 router = APIRouter()
 
@@ -17,7 +18,8 @@ router = APIRouter()
 async def route_ticket(
     ticket: TicketRequest,
     manager = Depends(get_model_manager),
-    db: Session = Depends(get_session)
+    db: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
 ):
     try:
         result = predict_ticket(
@@ -35,7 +37,8 @@ async def route_ticket(
             latency_ms=result["metrics"]["latency_ms"],
             llm_used=result["metrics"]["llm_used"],
             tokens_used=result["metrics"]["tokens_used"],
-            cost_usd=result["metrics"]["cost_usd"]
+            cost_usd=result["metrics"]["cost_usd"],
+            user_id=current_user.id
         )
 
         db.add(log_entry)
@@ -46,6 +49,12 @@ async def route_ticket(
     
     except Exception as e:
         db.rollback()
+        # --- NEW VISUAL ALARMS ---
+        print("\n" + "!!!" * 15)
+        print("CRITICAL ERROR IN ROUTE_TICKET:")
+        traceback.print_exc()  # This prints the EXACT line number that crashed
+        print("!!!" * 15 + "\n")
+        # --------------------------
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
     
 
