@@ -3,6 +3,10 @@ fastapi
 uvicorn
 pydantic
 
+#Database
+sqlmodel
+psycopg2-binary
+
 # Data Science
 pandas
 numpy
