@@ -28,3 +28,6 @@ ml_pipeline/models/cluster_labels_*.joblib
 
 #Archive
 archive/
+
+# Ignored Folders
+directory_struct.py
