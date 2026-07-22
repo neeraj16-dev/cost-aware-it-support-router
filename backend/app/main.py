@@ -7,8 +7,13 @@ from backend.app.model_manager import manager
 from backend.app.api.routes import router
 from langchain_google_genai import ChatGoogleGenerativeAI
 from dotenv import load_dotenv
-from backend.app.db.database import init_db
+from sqlmodel import Session, select
+
+from backend.app.db.database import init_db, engine
+from backend.app.db.models import User
+from backend.app.auth import get_password_hash
 from backend.app.api import auth_routes
+
 import os
 import joblib
 import logging
@@ -21,7 +26,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def load_models():
-    logger.info("Loading Setence Transformer...")
+    logger.info("Loading Sentence Transformer...")
 
     embedder = SentenceTransformer(
         "paraphrase-multilingual-MiniLM-L12-v2"
@@ -56,6 +61,21 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing Database...")
     init_db()
 
+    # --- AUTO-SEED ADMIN LOGIC ---
+    logger.info("Checking for existing users...")
+    with Session(engine) as session:
+        user_exists = session.exec(select(User)).first()
+        if not user_exists:
+            logger.info("Database is empty. Auto-creating default Admin account...")
+            hashed_pw = get_password_hash("admin123")
+            admin = User(username="admin", hashed_password=hashed_pw, role="admin")
+            session.add(admin)
+            session.commit()
+            logger.info("Default admin created: admin / admin123")
+        else:
+            logger.info("Users found in database. Skipping admin auto-creation.")
+    # -----------------------------
+
     (manager.embedder, manager.router_model, manager.category_map, manager.llm) = await asyncio.to_thread(load_models)
 
     logger.info("Backend is ready!")
@@ -65,7 +85,7 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down backend...")
 
 app = FastAPI(
-    title = "Cost-Aware IT Support Router",
+    title="Cost-Aware IT Support Router",
     lifespan=lifespan,
     version="1.0.0"
 )
@@ -77,10 +97,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"]
 )
+
 app.include_router(router)
 app.include_router(auth_routes.router)
-
-
-
-
-
