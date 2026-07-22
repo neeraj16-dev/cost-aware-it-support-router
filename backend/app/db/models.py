@@ -26,3 +26,5 @@ class TicketLog(SQLModel, table=True):
     status: str = Field(default="open")
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     user_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    is_reassigned: bool = Field(default=False)
+    corrected_queue: Optional[str] = Field(default=None)

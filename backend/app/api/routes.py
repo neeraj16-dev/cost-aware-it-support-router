@@ -1,12 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from sqlmodel import Session, select, func
 
 
-from backend.app.schemas import TicketRequest, RoutingResponse, TicketStatusUpdate, PaginatedTickets
+from backend.app.schemas import TicketRequest, RoutingResponse, TicketStatusUpdate, PaginatedTickets, TicketReassign
 from backend.app.dependencies import get_model_manager, get_current_user
 from backend.app.services.predictor import predict_ticket
 from backend.app.db.database import get_session
 from backend.app.db.models import TicketLog, User
+from backend.app.services.retrainer import run_active_learning_pipeline
 import traceback
 
 router = APIRouter()
@@ -66,11 +67,14 @@ def get_ticket_logs(
     current_user: User = Depends(get_current_user)
 ):
     if current_user.role == "admin":
-        count_statement = select(func.count(TicketLog.id))
-        statement = select(TicketLog).order_by(TicketLog.created_at.desc()).offset(skip).limit(limit)
+        base_query = select(TicketLog)
+    elif current_user.role == "user":
+        base_query = select(TicketLog).where(TicketLog.user_id == current_user.id)
     else:
-        count_statement = select(func.count(TicketLog.id)).where(TicketLog.user_id == current_user.id)
-        statement = select(TicketLog).where(TicketLog.user_id == current_user.id).order_by(TicketLog.created_at.desc()).offset(skip).limit(limit)
+        base_query = select(TicketLog).where(TicketLog.assigned_queue == current_user.role)
+
+    count_statement = select(func.count()).select_from(base_query.subquery())
+    statement = base_query.order_by(TicketLog.created_at.desc()).offset(skip).limit(limit)
 
     total_count = db.exec(count_statement).one()
     logs = db.exec(statement).all()
@@ -86,7 +90,7 @@ def update_ticket_status(
     db: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
-    if current_user.role != "admin":
+    if current_user.role == "user":
         raise HTTPException(status_code=403, detail="Not authorized to resolve tickets")
     
     ticket = db.get(TicketLog, ticket_id)
@@ -99,6 +103,43 @@ def update_ticket_status(
     db.refresh(ticket)
 
     return ticket
+
+@router.patch("/api/v1/tickets/{ticket_id}/reassign")
+def reassign_ticket(
+    ticket_id: int,
+    reassign_data: TicketReassign,
+    db: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    if current_user.role == "user":
+        raise HTTPException(status_code=403, detail="Not authorized to reassign tickets")
+    
+    ticket = db.get(TicketLog, ticket_id)
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    
+    ticket.is_reassigned = True
+    ticket.corrected_queue = reassign_data.corrected_queue
+    ticket.status = "resolved"
+
+    db.add(ticket)
+    db.commit()
+    db.refresh(ticket)
+    return ticket
+
+@router.post("/api/v1/admin/retrain")
+def trigger_retraining(
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    manager = Depends(get_model_manager) # <-- ADD THIS
+):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can trigger model retraining.")
+        
+    # Pass the manager to the background task!
+    background_tasks.add_task(run_active_learning_pipeline, manager)
+    
+    return {"message": "Active Learning retraining pipeline has been initiated in the background."}
 
 @router.get("/")
 def root():

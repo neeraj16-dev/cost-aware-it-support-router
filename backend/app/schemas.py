@@ -5,13 +5,15 @@ from datetime import datetime
 class UserCreate(BaseModel):
     username: str
     password: str
+    role: str = "user"
 
 class Token(BaseModel):
     access_token: str
     token_type: str
+    role: str
 
 class TokenData(BaseModel):
-    username: Optional[int] = None
+    username: Optional[str] = None
 
 class TicketRequest(BaseModel):
     subject: str
@@ -35,6 +37,9 @@ class RoutingResponse(BaseModel):
 class TicketStatusUpdate(BaseModel):
     status: str
 
+class TicketReassign(BaseModel):
+    corrected_queue: str
+
 class TicketLogRead(BaseModel):
     id: int
     subject: str
@@ -49,6 +54,8 @@ class TicketLogRead(BaseModel):
     status: str
     created_at: datetime
     user_id: int | None = None
+    is_reassigned: bool
+    corrected_queue: Optional[str]
 
     model_config = {
         "from_attributes": True

@@ -30,6 +30,7 @@ const handler = NextAuth({
             id: credentials?.username as string,
             name: credentials?.username as string,
             accessToken: data.access_token,
+            role: data.role, // <--- 1. Grab from backend
           };
         }
         return null;
@@ -41,16 +42,18 @@ const handler = NextAuth({
     async jwt({ token, user }) {
       if (user) {
         token.accessToken = (user as any).accessToken;
+        token.role = (user as any).role; // <--- 2. Store in JWT token
       }
       return token;
     },
     async session({ session, token }) {
       (session as any).accessToken = token.accessToken;
+      (session as any).role = token.role; // <--- 3. Expose to page.tsx
       return session;
     }
   },
   pages: {
-    signIn: "/login", // We will build this page in Stage 2
+    signIn: "/login",
   },
   secret: process.env.NEXTAUTH_SECRET || "fallback-secret-for-development",
 });
